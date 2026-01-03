@@ -917,6 +917,9 @@ class SistemaDocumental:
             if pd.isna(documentos_actuales) or documentos_actuales == '':
                 documentos_actuales = f"{tipo_documento}:{nombre_archivo}"
             else:
+                # CORRECCIÓN: Convertir a string si es necesario
+                if not isinstance(documentos_actuales, str):
+                    documentos_actuales = str(documentos_actuales)
                 documentos_actuales += f";{tipo_documento}:{nombre_archivo}"
             
             # Actualizar el campo
@@ -1187,7 +1190,7 @@ def mostrar_interfaz_estudiante():
                                        key="nombre_estudiante")
             nuevo_programa = st.text_input("Programa", 
                                          value=usuario_actual.get('programa', ''),
-                                         key="programa_estudiante")
+                                       key="programa_estudiante")
             nuevo_email = st.text_input("Correo electrónico", 
                                       value=usuario_actual.get('email', ''),
                                       key="email_estudiante")
@@ -1641,7 +1644,7 @@ def mostrar_interfaz_contratado():
     documentos.mostrar_documentos_usuario()
 
 # =============================================================================
-# INTERFAZ DE ADMINISTRADOR - COMPLETA
+# INTERFAZ DE ADMINISTRADOR - COMPLETA Y CORREGIDA
 # =============================================================================
 
 def mostrar_interfaz_administrador():
@@ -1743,7 +1746,7 @@ def mostrar_gestion_usuarios():
         return
 
     # Mostrar tabla de usuarios
-    st.dataframe(df_usuarios, use_container_width=True)
+    st.dataframe(df_usuarios, width='stretch')
 
     # Opciones de gestión
     col1, col2 = st.columns(2)
@@ -1798,7 +1801,7 @@ def mostrar_gestion_usuarios():
                     st.rerun()
 
 def mostrar_gestion_documentos():
-    """Gestión de documentos para administradores"""
+    """Gestión de documentos para administradores - CORREGIDO"""
     st.subheader("📁 Gestión de Documentos")
     
     # Navegación por tipos de usuarios
@@ -1821,22 +1824,33 @@ def mostrar_gestion_documentos():
         st.info(f"📝 No hay datos de {tipo_usuario.lower()} disponibles")
         return
     
-    # Mostrar documentos subidos
+    # Mostrar documentos subidos - CORRECCIÓN: Convertir a string antes de split
     if 'documentos_subidos' in datos.columns:
         st.subheader(f"Documentos de {tipo_usuario}")
         
         for _, usuario in datos.iterrows():
-            if pd.notna(usuario.get('documentos_subidos')) and usuario['documentos_subidos'] != '':
+            documentos_subidos = usuario.get('documentos_subidos')
+            
+            # CORRECCIÓN: Verificar y convertir a string
+            if pd.notna(documentos_subidos) and str(documentos_subidos).strip() != '':
+                # Convertir a string si es necesario
+                if not isinstance(documentos_subidos, str):
+                    documentos_subidos = str(documentos_subidos)
+                
                 with st.expander(f"📂 {usuario.get('nombre', 'Usuario')} - {usuario.get('matricula', 'N/A')}"):
-                    documentos = usuario['documentos_subidos'].split(';')
-                    for doc in documentos:
+                    documentos_lista = documentos_subidos.split(';')
+                    for doc in documentos_lista:
                         if ':' in doc:
-                            tipo, archivo = doc.split(':', 1)
-                            st.write(f"**{tipo}:** {archivo}")
-                            
-                            # Botón para descargar
-                            if documentos.descargar_documento(archivo):
-                                st.success(f"✅ {archivo} descargado")
+                            try:
+                                tipo, archivo = doc.split(':', 1)
+                                st.write(f"**{tipo}:** {archivo}")
+                                
+                                # Botón para descargar
+                                if st.button(f"📥 Descargar {tipo}", key=f"descargar_{archivo}"):
+                                    if documentos.descargar_documento(archivo.strip()):
+                                        st.success(f"✅ {archivo} descargado")
+                            except ValueError:
+                                st.warning(f"⚠️ Formato incorrecto: {doc}")
     else:
         st.info(f"📝 No hay documentos subidos para {tipo_usuario.lower()}")
 
@@ -1894,22 +1908,36 @@ def mostrar_configuracion_email():
         """)
 
 def mostrar_roles_permisos():
-    """Gestión de roles y permisos"""
+    """Gestión de roles y permisos - CORREGIDO"""
     st.subheader("🔐 Gestión de Roles y Permisos")
     
     if df_roles.empty:
         st.info("📝 No hay configuración de roles disponible")
         return
     
-    st.dataframe(df_roles, use_container_width=True)
+    st.dataframe(df_roles, width='stretch')
     
-    # Mostrar permisos por rol
+    # Mostrar permisos por rol - CORRECCIÓN: Manejar JSON correctamente
     st.subheader("📋 Permisos por Rol")
     rol_seleccionado = st.selectbox("Seleccionar rol", df_roles['rol'].unique())
     
     permisos_rol = df_roles[df_roles['rol'] == rol_seleccionado]
     if not permisos_rol.empty:
-        st.json(permisos_rol.iloc[0]['permisos'] if 'permisos' in permisos_rol.columns else {})
+        permisos_texto = permisos_rol.iloc[0].get('permisos', '')
+        
+        if permisos_texto and str(permisos_texto).strip() != '':
+            try:
+                # Intentar cargar como JSON
+                if isinstance(permisos_texto, str):
+                    permisos_dict = json.loads(permisos_texto)
+                else:
+                    permisos_dict = permisos_texto
+                st.json(permisos_dict)
+            except (json.JSONDecodeError, TypeError):
+                # Si no es JSON válido, mostrar como texto
+                st.text_area("Permisos (texto):", value=str(permisos_texto), height=200)
+        else:
+            st.info("⚠️ No hay permisos definidos para este rol")
 
 def mostrar_reportes_estadisticas():
     """Reportes y estadísticas para administradores"""
@@ -1935,20 +1963,21 @@ def mostrar_reportes_estadisticas():
             for rol, cantidad in distribucion_roles.items():
                 st.write(f"- {rol}: {cantidad}")
     
-    # Estadísticas de documentos
+    # Estadísticas de documentos - CORRECCIÓN: Convertir a string antes de split
     st.write("### 📊 Estadísticas de Documentos")
     
     total_documentos = 0
+    
     if not df_inscritos.empty and 'documentos_subidos' in df_inscritos.columns:
         docs_inscritos = df_inscritos['documentos_subidos'].apply(
-            lambda x: len(str(x).split(';')) if pd.notna(x) and x != '' else 0
+            lambda x: len(str(x).split(';')) if pd.notna(x) and str(x).strip() != '' else 0
         ).sum()
         total_documentos += docs_inscritos
         st.write(f"- **Inscritos:** {docs_inscritos} documentos")
     
     if not df_estudiantes.empty and 'documentos_subidos' in df_estudiantes.columns:
         docs_estudiantes = df_estudiantes['documentos_subidos'].apply(
-            lambda x: len(str(x).split(';')) if pd.notna(x) and x != '' else 0
+            lambda x: len(str(x).split(';')) if pd.notna(x) and str(x).strip() != '' else 0
         ).sum()
         total_documentos += docs_estudiantes
         st.write(f"- **Estudiantes:** {docs_estudiantes} documentos")
@@ -2060,7 +2089,7 @@ notification_email = "email_notificaciones@gmail.com"
         if not usuarios_con_email.empty:
             df_mostrar = usuarios_con_email[['usuario', 'email']].copy()
             df_mostrar.index = df_mostrar.index + 1
-            st.dataframe(df_mostrar, use_container_width=True)
+            st.dataframe(df_mostrar, width='stretch')
         else:
             st.warning("⚠️ No hay usuarios con email registrado")
     
